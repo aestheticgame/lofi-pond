@@ -20,7 +20,7 @@
    COLOUR indigo night sky, lily green, lotus pink, firefly amber
    TYPE Baloo 2 + Nunito
    LAYOUT one column: title and score, break bar, characters, board, controls; same on phone */
-:root{color-scheme:dark;--ink:#f4effd;--soft:#bdb5e2;--glass:rgba(255,255,255,.08);--edge:rgba(255,255,255,.16);--c0:#7fca5c;--c1:#f291b8;--c2:#f7b84a;--screen:#9ff3e6}
+:root{color-scheme:dark;--ink:#f4effd;--soft:#bdb5e2;--glass:rgba(255,255,255,.08);--edge:rgba(255,255,255,.16);--c0:#7fca5c;--c1:#f291b8;--c2:#f7b84a;--c3:#a58cf2;--c4:#6cc8ec;--screen:#9ff3e6}
 *{box-sizing:border-box;min-width:0}
 html,body{height:100%;margin:0}
 body{background:#1c1a44;color:var(--ink);font:16px/1.5 Nunito,system-ui,sans-serif;overflow-x:clip}
@@ -84,6 +84,8 @@ button[aria-pressed=false]{color:var(--soft)}
 .c0{--k:var(--c0)}
 .c1{--k:var(--c1)}
 .c2{--k:var(--c2)}
+.c3{--k:var(--c3)}
+.c4{--k:var(--c4)}
 .fx{position:absolute;pointer-events:none;z-index:4}
 .dot{border-radius:50%}
 .spark{border-radius:2px}
@@ -112,6 +114,7 @@ button[aria-pressed=false]{color:var(--soft)}
 .sub a{color:#ffb3c9;font-weight:700}
 .link b{color:var(--ink)}
 .link:hover,.sub a:hover{background:none;color:var(--ink)}
+.lbl{display:block;text-align:left;font-weight:700;margin:0 0 6px}
 .card input{display:block;width:100%;font:600 16px Nunito,sans-serif;color:var(--ink);background:rgba(255,255,255,.08);border:1px solid var(--edge);border-radius:12px;min-height:44px;padding:0 12px;margin:0 0 14px}
 .card input:focus-visible{outline:3px solid var(--c2);outline-offset:2px}
 .card a.btn{display:inline-flex;align-items:center;min-height:44px;padding:0 12px;border-radius:14px;border:1px solid var(--edge);background:var(--glass);color:var(--ink);text-decoration:none;font:700 14px Nunito,sans-serif}
@@ -228,7 +231,7 @@ button[aria-pressed=false]{color:var(--soft)}
         </g></g>
       </svg>
       <div class="mid">
-        <span class="goal">Next goal <b id="goal">50</b></span>
+        <span class="goal">Level <b id="lvl">1</b> · Goal <b id="goal">50</b></span>
         <span class="np" id="np">Tap to play music</span>
       </div>
       <div class="tvw">
@@ -275,7 +278,7 @@ button[aria-pressed=false]{color:var(--soft)}
 <template id="howTpl"><ul class="how">
   <li><span class="demo"><i class="tg"></i><i class="tg"></i><i class="tg"></i></span><span><b>Tap a tile</b> that touches tiles of the same colour. They pop, merge into the one you tapped, and their numbers add up.</span></li>
   <li><span class="demo"><i class="ta big">50</i></span><span><b>Reach the goal</b> (it starts at 50) and the tile changes colour and earns you a ★. Every star raises the goal by 25.</span></li>
-  <li><span class="demo"><i class="tg"></i><i class="tp"></i><i class="tg"></i></span><span><b>The game ends</b> when no two touching tiles share a colour. Bigger groups score more, so plan ahead.</span></li>
+  <li><span class="demo"><i class="tg"></i><i class="tp"></i><i class="tg"></i></span><span><b>The game ends</b> when no two touching tiles share a colour. Bigger groups score more, so plan ahead. As your score climbs, <b>new colours</b> drift in and the pond gets trickier.</span></li>
   <li><span class="demo"><i class="mu">♪</i></span><span>Turn <b>music, rain and pops</b> on or off at the bottom, and set a <b>break timer</b> at the top if you are taking a short break.</span></li>
 </ul></template>
 <script>
@@ -289,7 +292,7 @@ let hist=store.get('history',null);
 if(!hist||typeof hist!=='object'||!Array.isArray(hist.recent))hist={best:0,played:0,stars:0,secs:0,recent:[]};
 if(!Array.isArray(hist.board))hist.board=hist.recent.map(r=>Object.assign({n:'Guest'},r)).sort((a,b)=>b.s-a.s||a.t-b.t).slice(0,10);
 const YT='https://www.youtube.com/channel/UCsh-8ZRSB5vfTsIrpoOhClA';
-let prefs=Object.assign({music:true,pops:true,rain:false,brk:0,name:'',help:0},store.get('prefs',{}));
+let prefs=Object.assign({music:true,pops:true,rain:false,brk:0,name:'',help:0,asked:0},store.get('prefs',{}));
 let grid=[],score=0,stars=0,goal=50,moves=0,secs=0,lastTap=0,recorded=false,busy=false,over=false,nid=1,cs=60,gap=4,pd=10;
 const els=new Map();
 const savePrefs=()=>store.set('prefs',prefs);
@@ -420,8 +423,21 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!RM)reque
 rsz();rain();
 
 /* ---------- board ---------- */
-const COL=['#7fca5c','#f291b8','#f7b84a'];
-const rnd=()=>({id:nid++,c:Math.floor(Math.random()*3),v:1});
+const COL=['#7fca5c','#f291b8','#f7b84a','#a58cf2','#6cc8ec'];
+/* difficulty: new colours fade in at widely spaced scores (weights = spawn odds per colour) */
+const LEVELS=[{at:0,w:[1,1,1]},{at:2500,w:[1,1,1,.25],msg:'Level 2: a lilac tile drifts into the pond'},{at:8000,w:[1,1,1,.5],msg:'Level 3: more lilac tiles appear'},{at:20000,w:[1,1,1,.8],msg:'Level 4: lilac is everywhere now'},{at:50000,w:[1,1,1,1,.25],msg:'Level 5: a sky-blue tile joins the pond'}];
+let level=0;
+const lvOf=sc=>{let i=0;LEVELS.forEach((l,j)=>{if(sc>=l.at)i=j});return i};
+const ncol=()=>LEVELS[level].w.length;
+function pickColor(){const w=LEVELS[level].w;let x=Math.random()*w.reduce((a,b)=>a+b,0);for(let i=0;i<w.length;i++){x-=w[i];if(x<0)return i}return w.length-1}
+const rnd=()=>({id:nid++,c:pickColor(),v:1});
+let toastT=null;
+function showToast(msg,ms){const t=$('toast');t.textContent=msg;t.classList.remove('off');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.add('off'),ms)}
+function levelUp(){
+  const X=board.clientWidth/2,Y=board.clientHeight/2;
+  showToast(LEVELS[level].msg,3200);sfxGoal();flash(X,Y);ring(X,Y,COL[ncol()-1],true);
+  burst(X,Y,COL[ncol()-1],24,cs*2.4,cs*.2,'spark');frogWide(1800);react('star',1800);frogHop(true);
+}
 const cx=c=>pd+c*(cs+gap)+cs/2,cy=r=>pd+r*(cs+gap)+cs/2;
 function hasMove(){
   for(let r=0;r<R;r++)for(let c=0;c<C;c++){const t=grid[r][c];if(!t)continue;
@@ -430,7 +446,7 @@ function hasMove(){
   return false;
 }
 function mk(t){const p=document.createElement('div');p.className='p';p.innerHTML='<div class="tile"><i></i><span></span></div>';p.dataset.id=t.id;board.appendChild(p);els.set(t.id,p);paint(t);return p}
-function paint(t){const p=els.get(t.id);if(!p)return;const tile=p.firstChild;tile.classList.remove('c0','c1','c2');tile.classList.add('c'+t.c);tile.lastChild.textContent=t.v>1?t.v:''}
+function paint(t){const p=els.get(t.id);if(!p)return;const tile=p.firstChild;tile.classList.remove('c0','c1','c2','c3','c4');tile.classList.add('c'+t.c);tile.lastChild.textContent=t.v>1?t.v:''}
 function same(r,c,k){return r>=0&&r<R&&c>=0&&c<C&&!!grid[r][c]&&grid[r][c].c===k}
 function shapes(){
   for(let r=0;r<R;r++)for(let c=0;c<C;c++){const t=grid[r][c];if(!t)continue;const p=els.get(t.id);if(!p)continue;
@@ -473,7 +489,7 @@ function group(r,c){
   return out;
 }
 function hud(){
-  $('score').textContent=score;$('stars').textContent=stars;$('goal').textContent=goal;
+  $('lvl').textContent=level+1;$('score').textContent=score;$('stars').textContent=stars;$('goal').textContent=goal;
   if(score>hist.best){hist.best=score;store.set('history',hist)}
   $('best').textContent=hist.best;
 }
@@ -504,11 +520,13 @@ function tap(r,c){
     if(n>=5)shakeBoard(Math.min(8,n*.8));
     frogHop(n>=5);react('happy',900);
     if(t.v>=goal){hit=true;stars++;score+=goal;const gl=goal;goal+=25;sfxGoal();
-      setTimeout(()=>{t.c=(t.c+1)%3;t.v=1;paint(t);shapes();anim(tp,'glow');
+      setTimeout(()=>{t.c=(t.c+1)%ncol();t.v=1;paint(t);shapes();anim(tp,'glow');
         flash(X,Y);ring(X,Y,'#f7b84a',true);ring(X,Y,COL[t.c],false);
         burst(X,Y,'#f7b84a',22,cs*2.2,cs*.2,'spark');burst(X,Y,'#f291b8',8,cs*1.6,cs*.13);burst(X,Y,'#7fca5c',8,cs*1.6,cs*.13);
         floatTxt(X,Y-cs*.3,'★ +'+gl,1.3);shakeBoard(6);frogWide(1500);react('star',1600);frogHop(true)},380)}
-    hud();setTimeout(fall,hit?560:110);
+    const nl=lvOf(score);if(nl>level){level=nl;setTimeout(levelUp,hit?700:250)}
+    hud();
+    setTimeout(fall,hit?560:110);
   },rest.length*step+90);
 }
 function fall(){
@@ -534,7 +552,7 @@ function record(){
 function renameEntry(e,n){[hist.recent,hist.board].forEach(l=>l.forEach(x=>{if(x.t===e.t)x.n=n}));store.set('history',hist)}
 function clearBoard(){els.forEach(p=>p.remove());els.clear()}
 function newGame(){
-  record();clearBoard();
+  record();clearBoard();level=0;
   do{grid=[...Array(R)].map(()=>[...Array(C)].map(rnd))}while(!hasMove());
   score=0;stars=0;goal=50;moves=0;secs=0;lastTap=0;recorded=false;over=false;busy=false;
   hideOv();hud();size();saveGame();
@@ -596,9 +614,24 @@ function showScores(){
     ['Clear scores',b=>{if(b.dataset.sure){hist={best:score,played:0,stars:0,secs:0,recent:[],board:[]};lastEntry=null;store.set('history',hist);hud();showScores()}else{b.dataset.sure='1';b.textContent='Tap again to clear'}}]],x);
 }
 $('bHist').onclick=showScores;
+const fine=matchMedia('(pointer:fine)').matches;
 function showHelp(first){
-  prefs.help=1;savePrefs();
-  showOv(first?'Welcome to Lofi Pond':'How to play',first?'A cozy puzzle break with Frog & TV Boy. Here is all you need:':'',[[first?"Let's play":'Got it',()=>{if(over)gameOver();else hideOv()},true]],$('howTpl').content.cloneNode(true));
+  prefs.help=1;const ask=first&&!prefs.name;if(ask)prefs.asked=1;savePrefs();
+  const x=document.createDocumentFragment();let inp=null;
+  if(ask){const l=document.createElement('label');l.className='lbl';l.htmlFor='pname';l.textContent='What should we call you?';inp=nameInput();x.append(l,inp)}
+  x.append($('howTpl').content.cloneNode(true));
+  const go=()=>{if(inp){const n=cleanName(inp.value);if(n){prefs.name=n;savePrefs();showName()}}if(over)gameOver();else hideOv()};
+  if(inp)inp.addEventListener('keydown',e=>{if(e.key==='Enter')go()});
+  showOv(first?'Welcome to Lofi Pond':'How to play',first?'A cozy puzzle break with Frog & TV Boy.':'',[[first?"Let's play":'Got it',go,true]],x);
+  if(inp&&fine)setTimeout(()=>inp.focus(),50);
+}
+function askName(){
+  prefs.asked=1;savePrefs();
+  const l=document.createElement('label'),i=nameInput(),x=document.createDocumentFragment();l.className='lbl';l.htmlFor='pname';l.textContent='What should we call you?';x.append(l,i);
+  const save=()=>{const n=cleanName(i.value);if(n){prefs.name=n;savePrefs();showName()}hideOv()};
+  i.addEventListener('keydown',e=>{if(e.key==='Enter')save()});
+  showOv('Welcome back','Add a name so your scores show up as yours.',[['Save',save,true],['Not now',hideOv]],x);
+  if(fine)setTimeout(()=>i.focus(),50);
 }
 $('bHelp').onclick=()=>showHelp(false);
 
@@ -620,17 +653,17 @@ function breakOver(){
 $('brk').addEventListener('change',e=>{prefs.brk=+e.target.value;savePrefs();clearInterval(tId);tId=null;left=0;showT()});
 
 /* ---------- boot ---------- */
-function valid(g){return Array.isArray(g)&&g.length===R&&g.every(row=>Array.isArray(row)&&row.length===C&&row.every(t=>t&&t.c>=0&&t.c<3&&t.v>0))}
+function valid(g){return Array.isArray(g)&&g.length===R&&g.every(row=>Array.isArray(row)&&row.length===C&&row.every(t=>t&&t.c>=0&&t.c<5&&t.v>0))}
 function start(data){
   syncBtns();showName();$('brk').value=String(prefs.brk);showT();setNP();
   const s=data&&valid(data.grid)?data:store.get('game',null);
   if(s&&valid(s.grid)){
     clearBoard();grid=s.grid.map(row=>row.map(t=>({id:nid++,c:t.c|0,v:t.v|0})));
-    score=s.score|0;stars=s.stars|0;goal=s.goal|0||50;moves=s.moves|0;secs=s.secs|0;
+    score=s.score|0;stars=s.stars|0;level=lvOf(score);goal=s.goal|0||50;moves=s.moves|0;secs=s.secs|0;
     if(moves>0)$('toast').classList.add('off');
     hud();size();if(!hasMove())gameOver();
   }else{newGame();if(hist.played>0)$('toast').classList.add('off')}
-  if(!prefs.help&&hist.played===0&&!over)showHelp(true);
+  if(!over){if(!prefs.help&&hist.played===0)showHelp(true);else if(!prefs.name&&!prefs.asked)askName()}
 }
 start({});
 }
